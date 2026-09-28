@@ -23,7 +23,7 @@ def load_config(path: Path) -> dict:
         save_config(path, DEFAULTS)
         print(f"Создан {path} — добавьте позиции через --add-wb / --add-url")
     try:
-        cfg = json.loads(path.read_text(encoding="utf-8"))
+        cfg = json.loads(path.read_text(encoding="utf-8-sig"))  # utf-8-sig: переживает BOM из Блокнота
     except (OSError, json.JSONDecodeError) as e:
         raise ConfigError(f"не удалось прочитать {path}: {e}") from e
     if not isinstance(cfg, dict):
@@ -46,7 +46,7 @@ def load_state(path: Path) -> dict:
     if not path.exists():
         return {"items": {}}
     try:
-        state = json.loads(path.read_text(encoding="utf-8"))
+        state = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as e:
         raise ConfigError(f"не удалось прочитать {path}: {e}") from e
     if not isinstance(state, dict) or not isinstance(state.get("items"), dict):

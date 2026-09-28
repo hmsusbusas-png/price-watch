@@ -40,7 +40,10 @@ def _get_json(url: str, params: dict, timeout: float, retries: int) -> dict:
             resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
             if resp.status_code == 200:
                 return resp.json()
-            last = SourceError(f"HTTP {resp.status_code}")
+            if resp.status_code == 403:
+                last = SourceError("доступ запрещён (HTTP 403) — WB может блокировать IP")
+            else:
+                last = SourceError(f"HTTP {resp.status_code}")
         except (requests.RequestException, ValueError) as e:
             last = SourceError(e.__class__.__name__)
         if attempt < retries:
