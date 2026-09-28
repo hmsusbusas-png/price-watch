@@ -26,11 +26,18 @@ class SourceError(Exception):
 
 
 def fetch_price(item: dict, timeout: float = 10.0, retries: int = 3) -> float:
-    if item.get("type") == "wb":
-        return wb_price(item["sku"], timeout=timeout, retries=retries)
-    if item.get("type") == "url":
-        return page_price(item["url"], item["selector"], timeout=timeout, retries=retries)
-    raise SourceError(f"неизвестный тип источника: {item.get('type')!r}")
+    kind = item.get("type")
+    if kind == "wb":
+        sku = item.get("sku")
+        if not sku:
+            raise SourceError("у позиции type=wb не задан sku")
+        return wb_price(str(sku), timeout=timeout, retries=retries)
+    if kind == "url":
+        url, selector = item.get("url"), item.get("selector")
+        if not url or not selector:
+            raise SourceError("у позиции type=url должны быть заданы url и selector")
+        return page_price(url, selector, timeout=timeout, retries=retries)
+    raise SourceError(f"неизвестный тип источника: {kind!r}")
 
 
 def _get_json(url: str, params: dict, timeout: float, retries: int) -> dict:

@@ -104,12 +104,14 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
     entries = state.setdefault("items", {})
     notices: list[str] = []
     for index, item in enumerate(items):
-        key = pwconfig.item_key(item)
-        name = item.get("name") or key
+        label = str(item.get("name") or item.get("sku") or item.get("url") or "позиция ?")
         try:
+            key = pwconfig.item_key(item)
+            name = item.get("name") or key
             price = sources.fetch_price(item, timeout=timeout)
-        except sources.SourceError as exc:
-            log.error("%s: %s", name, exc)
+        except (sources.SourceError, pwconfig.ConfigError) as exc:
+            # одна плохая позиция (битый конфиг, сеть, селектор) не роняет весь цикл
+            log.error("%s: %s", label, exc)
             continue
         prev = (entries.get(key) or {}).get("price")
         entries[key] = {"price": price, "ts": datetime.now().isoformat(timespec="seconds"),
@@ -150,6 +152,22 @@ def cmd_remove(cfg: dict, cfg_path: Path, target: str) -> None:
         sys.exit(f"Не найдено в списке: {target}")
 
 
+def interval_minutes(cfg: dict) -> int:
+    """check_interval_minutes из конфига; мусор в значении — понятная ConfigError."""
+    raw = cfg.get("check_interval_minutes")
+    if raw is None or raw == "":
+        return 30
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise pwconfig.ConfigError(
+            f"check_interval_minutes должно быть целым числом минут, получено: {raw!r}") from None
+    if value < 1:
+        raise pwconfig.ConfigError(
+            f"check_interval_minutes должно быть >= 1, получено: {value}")
+    return value
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="price-watch",
@@ -168,6 +186,13 @@ def main() -> None:
     parser.add_argument("--remove", metavar="SKU_OR_URL", help="убрать позицию из списка")
     args = parser.parse_args()
 
+    mutating = any([args.add_wb, args.add_url, args.remove])
+    checking = any([args.once, args.daemon, args.status])
+    if mutating and checking:
+        parser.error("--add-wb/--add-url/--remove нельзя совмещать с --once/--daemon/--status")
+    if args.add_wb and args.add_url:
+        parser.error("одним запуском можно добавить либо --add-wb, либо --add-url")
+
     if not any([args.once, args.daemon, args.status, args.add_wb, args.add_url, args.remove]):
         parser.print_help()
         sys.exit(2)
@@ -179,12 +204,15 @@ def main() -> None:
         sys.exit(f"Ошибка конфига: {e}")
 
     if args.once or args.daemon:
+        try:
+            interval = interval_minutes(cfg)
+        except pwconfig.ConfigError as e:
+            sys.exit(f"Ошибка конфига: {e}")
         setup_logging(cfg_path.parent)
         creds = pwconfig.telegram_creds(cfg)
         if creds is None and not args.dry_run:
             log.warning("Telegram не настроен: заполните telegram в config.json "
                         "или задайте переменную TG_BOT_TOKEN")
-        interval = max(1, int(cfg.get("check_interval_minutes") or 30))
         while True:
             state_path = pwconfig.state_path(cfg_path)
             state = pwconfig.load_state(state_path)

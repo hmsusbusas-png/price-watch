@@ -65,8 +65,13 @@ python watcher.py --add-url https://shop.example.com/p/42 --selector "span.price
 python watcher.py --remove 155713071      # by SKU or by URL
 ```
 
-Exit codes: `0` — ok, `2` — CLI usage error. Network errors are retried (3 attempts
-with backoff) and logged; one broken item never stops the whole check.
+Exit codes: `0` — ok, `1` — config error (unreadable `config.json`/`state.json`,
+non-numeric `check_interval_minutes`, unknown `--remove` target), `2` — CLI usage
+error (no mode selected, `--add-wb` together with `--add-url`, or `--add-*` /
+`--remove` mixed with `--once` / `--daemon` / `--status`). Network errors are
+retried (3 attempts with backoff) and logged; one broken item (bad config,
+dead selector, no network) is logged and skipped — it never stops the whole
+check. Telegram delivery problems are logged too and don't crash the run.
 
 ## Run on a schedule
 
@@ -139,4 +144,10 @@ Windows: `schtasks /Create /TN "PriceWatch" /TR "python C:\путь\к\price-wat
 cron: `*/30 * * * * cd /путь/к/price-watch && python3 watcher.py --once >> logs/cron.out 2>&1`
 
 Логи пишутся в `logs/watch.log` и в консоль; сетевые ошибки повторяются с паузой,
-один упавший товар не ломает всю проверку. Тесты: `python -m unittest discover -s tests -v`.
+одна плохая позиция (битый конфиг, умерший селектор, нет сети) пишется в лог и
+пропускается — проверка целиком не падает. Коды выхода: `0` — успех, `1` —
+ошибка конфига (нечитаемый config/state.json, нечисловой
+`check_interval_minutes`, нет цели в `--remove`), `2` — ошибка запуска
+(не выбран режим, `--add-wb` вместе с `--add-url`, смешивание `--add-*` /
+`--remove` с `--once` / `--daemon` / `--status`). Тесты:
+`python -m unittest discover -s tests -v`.
