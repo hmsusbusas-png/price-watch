@@ -2,10 +2,26 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 import pwconfig
+import sources
+
+log = logging.getLogger("price-watch")
+
+REQUEST_PAUSE = 1.5  # пауза между запросами, чтобы не дёргать сайты подряд
+
+
+def setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 def fmt_price(price: float) -> str:
@@ -32,6 +48,36 @@ def print_status(cfg: dict, state: dict) -> None:
         price = f"{fmt_price(entry['price'])} ₽" if "price" in entry else "—"
         checked = entry.get("ts") or "ещё не проверялся"
         print(f"  {name:<38} {price:>14}  {checked}")
+
+
+def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
+    """Опросить все позиции, обновить state и вернуть тексты уведомлений."""
+    items = cfg.get("items") or []
+    if not items:
+        log.warning("Список отслеживания пуст — добавьте позиции через --add-wb / --add-url")
+        return []
+    entries = state.setdefault("items", {})
+    notices: list[str] = []
+    for index, item in enumerate(items):
+        key = pwconfig.item_key(item)
+        name = item.get("name") or key
+        try:
+            price = sources.fetch_price(item, timeout=timeout)
+        except sources.SourceError as exc:
+            log.error("%s: %s", name, exc)
+            continue
+        prev = (entries.get(key) or {}).get("price")
+        entries[key] = {"price": price, "ts": datetime.now().isoformat(timespec="seconds"),
+                        "name": name}
+        if prev is None:
+            log.info("%s: базовая цена %s ₽ записана", name, fmt_price(price))
+        elif price == prev:
+            log.info("%s: без изменений (%s ₽)", name, fmt_price(price))
+        else:
+            log.info("%s: цена изменилась: %s → %s ₽", name, fmt_price(prev), fmt_price(price))
+        if index < len(items) - 1:
+            time.sleep(REQUEST_PAUSE)
+    return notices
 
 
 def cmd_add(cfg: dict, cfg_path: Path, args: argparse.Namespace) -> None:
@@ -62,6 +108,7 @@ def main() -> None:
         prog="price-watch",
         description="Мониторинг цен (Wildberries и любые страницы) с уведомлениями в Telegram")
     parser.add_argument("--config", default="config.json", help="путь к config.json")
+    parser.add_argument("--once", action="store_true", help="одна проверка и выход")
     parser.add_argument("--status", action="store_true", help="показать сохранённые цены")
     parser.add_argument("--add-wb", metavar="SKU", help="добавить товар Wildberries по артикулу")
     parser.add_argument("--add-url", metavar="URL", help="добавить произвольную страницу")
@@ -70,7 +117,7 @@ def main() -> None:
     parser.add_argument("--remove", metavar="SKU_OR_URL", help="убрать позицию из списка")
     args = parser.parse_args()
 
-    if not any([args.status, args.add_wb, args.add_url, args.remove]):
+    if not any([args.once, args.status, args.add_wb, args.add_url, args.remove]):
         parser.print_help()
         sys.exit(2)
 
@@ -80,7 +127,13 @@ def main() -> None:
     except pwconfig.ConfigError as e:
         sys.exit(f"Ошибка конфига: {e}")
 
-    if args.add_wb or args.add_url:
+    if args.once:
+        setup_logging()
+        state_path = pwconfig.state_path(cfg_path)
+        state = pwconfig.load_state(state_path)
+        check_once(cfg, state)
+        pwconfig.save_state(state_path, state)
+    elif args.add_wb or args.add_url:
         cmd_add(cfg, cfg_path, args)
     elif args.remove:
         cmd_remove(cfg, cfg_path, args.remove)
