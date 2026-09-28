@@ -18,12 +18,18 @@ log = logging.getLogger("price-watch")
 REQUEST_PAUSE = 1.5  # пауза между запросами, чтобы не дёргать сайты подряд
 
 
-def setup_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(message)s",
-        datefmt="%H:%M:%S",
-    )
+def setup_logging(base_dir: Path) -> None:
+    """Логи одновременно в консоль и в logs/watch.log рядом с config.json."""
+    log_dir = base_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%Y-%m-%d %H:%M:%S")
+    log.setLevel(logging.INFO)
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%H:%M:%S"))
+    log.addHandler(console)
+    file_handler = logging.FileHandler(log_dir / "watch.log", encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    log.addHandler(file_handler)
 
 
 def fmt_price(price: float) -> str:
@@ -152,6 +158,8 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="одна проверка и выход")
     parser.add_argument("--dry-run", action="store_true",
                         help="не отправлять в Telegram, только печатать")
+    parser.add_argument("--daemon", action="store_true",
+                        help="проверять по кругу с интервалом check_interval_minutes")
     parser.add_argument("--status", action="store_true", help="показать сохранённые цены")
     parser.add_argument("--add-wb", metavar="SKU", help="добавить товар Wildberries по артикулу")
     parser.add_argument("--add-url", metavar="URL", help="добавить произвольную страницу")
@@ -160,7 +168,7 @@ def main() -> None:
     parser.add_argument("--remove", metavar="SKU_OR_URL", help="убрать позицию из списка")
     args = parser.parse_args()
 
-    if not any([args.once, args.status, args.add_wb, args.add_url, args.remove]):
+    if not any([args.once, args.daemon, args.status, args.add_wb, args.add_url, args.remove]):
         parser.print_help()
         sys.exit(2)
 
@@ -170,13 +178,23 @@ def main() -> None:
     except pwconfig.ConfigError as e:
         sys.exit(f"Ошибка конфига: {e}")
 
-    if args.once:
-        setup_logging()
-        state_path = pwconfig.state_path(cfg_path)
-        state = pwconfig.load_state(state_path)
-        notices = check_once(cfg, state)
-        pwconfig.save_state(state_path, state)
-        deliver(notices, pwconfig.telegram_creds(cfg), args.dry_run)
+    if args.once or args.daemon:
+        setup_logging(cfg_path.parent)
+        creds = pwconfig.telegram_creds(cfg)
+        if creds is None and not args.dry_run:
+            log.warning("Telegram не настроен: заполните telegram в config.json "
+                        "или задайте переменную TG_BOT_TOKEN")
+        interval = max(1, int(cfg.get("check_interval_minutes") or 30))
+        while True:
+            state_path = pwconfig.state_path(cfg_path)
+            state = pwconfig.load_state(state_path)
+            notices = check_once(cfg, state)
+            pwconfig.save_state(state_path, state)
+            deliver(notices, creds, args.dry_run)
+            if not args.daemon:
+                break
+            log.info("следующая проверка через %d мин", interval)
+            time.sleep(interval * 60)
     elif args.add_wb or args.add_url:
         cmd_add(cfg, cfg_path, args)
     elif args.remove:
