@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "type": "wb",
+      "sku": "155713071",
+      "name": "Wildberries example item"
+    },
+    {
+      "type": "url",
+      "url": "https://example.com/product",
+      "selector": "span.product-price",
+      "name": "Any shop example"
+    }
+  ],
+  "check_interval_minutes": 30,
+  "alert_drop_percent": 5,
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  }
+}

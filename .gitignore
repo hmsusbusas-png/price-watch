@@ -1,0 +1,7 @@
+__pycache__/
+venv/
+state.json
+logs/
+.env
+config.*.json
+*.log
