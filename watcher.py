@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import logging
 import sys
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 
 import pwconfig
 import sources
+import telegram as tg
 
 log = logging.getLogger("price-watch")
 
@@ -50,6 +52,43 @@ def print_status(cfg: dict, state: dict) -> None:
         print(f"  {name:<38} {price:>14}  {checked}")
 
 
+def build_message(item: dict, prev: float, current: float, drop_threshold: float) -> str:
+    """Сообщение о смене цены; падение сильнее порога помечается как алерт."""
+    diff = current - prev
+    pct = diff / prev * 100 if prev else 0.0
+    name = html.escape(item.get("name") or pwconfig.item_key(item))
+    if diff < 0 and abs(pct) >= drop_threshold:
+        title, mark = "Цена упала!", "🔻"
+    else:
+        title, mark = "Изменение цены", "🔺" if diff > 0 else "ℹ️"
+    return (f"{mark} <b>{title}</b>\n"
+            f"{name}\n"
+            f"{fmt_price(prev)} → {fmt_price(current)} ₽ ({pct:+.1f}%)")
+
+
+def deliver(notices: list[str], creds: tuple[str, str] | None, dry_run: bool) -> None:
+    if not notices:
+        return
+    if dry_run:
+        for text in notices:
+            print("--- dry-run: сообщение не отправлено ---")
+            print(text)
+        return
+    if creds is None:
+        log.warning("Telegram не настроен (bot_token/chat_id в config.json или переменная "
+                    "TG_BOT_TOKEN) — уведомления только в лог:")
+        for text in notices:
+            print(text)
+        return
+    token, chat_id = creds
+    for text in notices:
+        try:
+            tg.send(token, chat_id, text)
+            log.info("уведомление отправлено в Telegram")
+        except tg.TelegramError as exc:
+            log.error("%s", exc)
+
+
 def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
     """Опросить все позиции, обновить state и вернуть тексты уведомлений."""
     items = cfg.get("items") or []
@@ -75,6 +114,8 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
             log.info("%s: без изменений (%s ₽)", name, fmt_price(price))
         else:
             log.info("%s: цена изменилась: %s → %s ₽", name, fmt_price(prev), fmt_price(price))
+            notices.append(build_message(item, prev, price,
+                                         float(cfg.get("alert_drop_percent") or 0)))
         if index < len(items) - 1:
             time.sleep(REQUEST_PAUSE)
     return notices
@@ -109,6 +150,8 @@ def main() -> None:
         description="Мониторинг цен (Wildberries и любые страницы) с уведомлениями в Telegram")
     parser.add_argument("--config", default="config.json", help="путь к config.json")
     parser.add_argument("--once", action="store_true", help="одна проверка и выход")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="не отправлять в Telegram, только печатать")
     parser.add_argument("--status", action="store_true", help="показать сохранённые цены")
     parser.add_argument("--add-wb", metavar="SKU", help="добавить товар Wildberries по артикулу")
     parser.add_argument("--add-url", metavar="URL", help="добавить произвольную страницу")
@@ -131,8 +174,9 @@ def main() -> None:
         setup_logging()
         state_path = pwconfig.state_path(cfg_path)
         state = pwconfig.load_state(state_path)
-        check_once(cfg, state)
+        notices = check_once(cfg, state)
         pwconfig.save_state(state_path, state)
+        deliver(notices, pwconfig.telegram_creds(cfg), args.dry_run)
     elif args.add_wb or args.add_url:
         cmd_add(cfg, cfg_path, args)
     elif args.remove:
