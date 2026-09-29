@@ -1,9 +1,6 @@
 # price-watch
 
-Price monitoring with Telegram alerts. Watch products on **Wildberries** (by SKU)
-and on **any website** (by URL + CSS selector); get a Telegram message when a price
-drops past your threshold or simply changes. Pure Python + `requests`, no browser,
-no Selenium.
+Мониторинг цен с уведомлениями в Telegram: следит за товарами на Wildberries (по артикулу) и на любых сайтах (по URL + CSS-селектору), присылает сообщение, когда цена упала ниже порога или просто изменилась. Чистый Python + requests — без браузера и Selenium.
 
 ```
 🔻 Price drop!
@@ -11,143 +8,108 @@ Mechanical Keyboard K87
 3 199,00 → 2 499,90 ₽ (-21.9%)
 ```
 
-## Features
+## Возможности
 
-- **Two source types** — Wildberries card API by SKU (`type: "wb"`) and any HTML page
-  parsed with a small built-in selector engine (`type: "url"`; supports `tag`, `#id`,
-  `.class`, `[attr=value]` and descendant chains — no BeautifulSoup needed).
-- **Alerts** — a Telegram message on any price change; drops bigger than
-  `alert_drop_percent` are flagged as *Price drop!*.
-- **State** — last seen prices live in `state.json`, so restarts are safe.
-- **CLI** — one-shot check, daemon mode, dry-run, add/remove items right from the
-  command line.
-- **Polite by default** — retries with backoff on network errors, pause between
-  requests, everything logged to `logs/watch.log` and the console.
+- два типа источников: карточка Wildberries по артикулу (`type: "wb"`) и любая HTML-страница через встроенный селектор-движок (`type: "url"`; поддерживаются `tag`, `#id`, `.class`, `[attr=value]` и цепочки вложенности — BeautifulSoup не нужен)
+- уведомление в Telegram при любом изменении цены; падение больше `alert_drop_percent` помечается как «Цена упала!»
+- последние цены хранятся в `state.json`, перезапуски безопасны
+- CLI: разовая проверка, режим демона, dry-run, добавление и удаление позиций прямо из командной строки
+- вежливый по умолчанию: повторы с паузой при сетевых ошибках, задержка между запросами, логи в `logs/watch.log` и консоль
+- одна сломанная позиция (битый конфиг, умерший селектор, нет сети) пишется в лог и пропускается — проверка целиком не падает
+- осмысленные коды выхода: `0` — успех, `1` — ошибка конфига, `2` — ошибка запуска; удобно вешать на cron
 
-## Setup
+## Быстрый старт
 
-```bash
-pip install -r requirements.txt
-```
+1. Склонируйте репозиторий и установите зависимости:
 
-**1. Create a Telegram bot** — message [@BotFather](https://t.me/BotFather),
-send `/newbot`, copy the token. Then send any message to your new bot and get your
-chat id via `https://api.telegram.org/bot<TOKEN>/getUpdates` (`"chat":{"id": ...}`).
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-**2. Fill `config.json`:**
+2. Создайте бота у [@BotFather](https://t.me/BotFather) (`/newbot`) и скопируйте токен. Напишите своему боту любое сообщение и получите `chat_id` через `https://api.telegram.org/bot<ТОКЕН>/getUpdates` (поле `"chat":{"id": ...}`).
+3. Заполните `config.json`:
 
-```json
-{
-  "items": [
-    { "type": "wb",  "sku": "155713071", "name": "Wildberries item" },
-    { "type": "url", "url": "https://shop.example.com/product/42",
-      "selector": "span.product-price", "name": "Shop item" }
-  ],
-  "check_interval_minutes": 30,
-  "alert_drop_percent": 5,
-  "telegram": { "bot_token": "123456:ABC...", "chat_id": "11111111" }
-}
-```
+   ```json
+   {
+     "items": [
+       { "type": "wb",  "sku": "155713071", "name": "Wildberries item" },
+       { "type": "url", "url": "https://shop.example.com/product/42",
+         "selector": "span.product-price", "name": "Shop item" }
+     ],
+     "check_interval_minutes": 30,
+     "alert_drop_percent": 5,
+     "telegram": { "bot_token": "123456:ABC...", "chat_id": "11111111" }
+   }
+   ```
 
-The bot token can also be kept out of the config in the `TG_BOT_TOKEN`
-environment variable.
+   Токен можно не класть в конфиг, а держать в переменной окружения `TG_BOT_TOKEN`.
 
-## Usage
+4. Проверьте, что всё читается: `python watcher.py --once --dry-run` — без отправки в Telegram, только печать.
+
+## Команды
 
 ```bash
-python watcher.py --once                  # single check of all items
-python watcher.py --daemon                # check in a loop every N minutes
-python watcher.py --daemon --dry-run      # loop without sending to Telegram
-python watcher.py --status                # show saved prices from state.json
+python watcher.py --once                  # одна проверка всех позиций
+python watcher.py --daemon                # цикл каждые check_interval_minutes
+python watcher.py --daemon --dry-run      # цикл без отправки в Telegram
+python watcher.py --status                # сохранённые цены из state.json
 
-python watcher.py --add-wb 155713071 --name "Wireless mouse"
-python watcher.py --add-url https://shop.example.com/p/42 --selector "span.price" --name "Shop item"
-python watcher.py --remove 155713071      # by SKU or by URL
+python watcher.py --add-wb 155713071 --name "Мышка беспроводная"
+python watcher.py --add-url https://shop.example.com/p/42 --selector "span.price" --name "Товар"
+python watcher.py --remove 155713071      # по артикулу или по URL
 ```
 
-Exit codes: `0` — ok, `1` — config error (unreadable `config.json`/`state.json`,
-non-numeric `check_interval_minutes`, unknown `--remove` target), `2` — CLI usage
-error (no mode selected, `--add-wb` together with `--add-url`, or `--add-*` /
-`--remove` mixed with `--once` / `--daemon` / `--status`). Network errors are
-retried (3 attempts with backoff) and logged; one broken item (bad config,
-dead selector, no network) is logged and skipped — it never stops the whole
-check. Telegram delivery problems are logged too and don't crash the run.
+Сетевые ошибки повторяются (3 попытки с паузой) и логируются. Коды выхода: `0` — успех, `1` — ошибка конфига (нечитаемый `config.json`/`state.json`, нечисловой `check_interval_minutes`, нет цели для `--remove`), `2` — ошибка запуска (не выбран режим, `--add-wb` вместе с `--add-url`, смешивание `--add-*`/`--remove` с `--once`/`--daemon`/`--status`).
 
-## Run on a schedule
+## По расписанию
 
-**Windows (Task Scheduler):**
+Windows (планировщик задач):
 
 ```bat
 schtasks /Create /TN "PriceWatch" /TR "python C:\path\to\price-watch\watcher.py --once" /SC MINUTE /MO 30
 ```
 
-**Linux / macOS (cron):**
+Linux / macOS (cron):
 
 ```cron
 */30 * * * * cd /path/to/price-watch && /usr/bin/python3 watcher.py --once >> logs/cron.out 2>&1
 ```
 
-(`--daemon` keeps the process running by itself; the scheduled `--once` variant is
-more robust — a crashed run is simply restarted by the scheduler.)
+`--daemon` держит процесс запущенным сам; вариант с `--once` по расписанию надёжнее — упавший запуск просто перезапустит планировщик.
 
-## Project layout
+## Честно об ограничениях
+
+- WB с некоторых IP отдаёт 403: если карточки не тянутся, попробуйте позже или с другого адреса.
+- url-источник — простой селектор-движок (`tag`, `#id`, `.class`, `[attr=value]`, вложенность): страницы, где цена рисуется JavaScript'ом или спрятана в теневом DOM, он не разберёт.
+- проблемы доставки в Telegram логируются и не роняют проверку.
+
+## Структура
 
 ```
-watcher.py    CLI, check loop, alert logic
-sources.py    Wildberries API + HTML page source (selector engine)
-telegram.py   Telegram Bot API client
-pwconfig.py   config.json / state.json handling
-config.json   tracked items and settings (edit this)
-state.json    last seen prices (created automatically, do not commit)
-tests/        unit tests with a mocked price source
+price-watch/
+├── watcher.py    # CLI, цикл проверок, логика уведомлений
+├── sources.py    # API Wildberries + источник HTML-страниц (селектор-движок)
+├── telegram.py   # клиент Telegram Bot API
+├── pwconfig.py   # работа с config.json / state.json
+├── config.json   # отслеживаемые позиции и настройки (редактируйте его)
+├── state.json    # последние цены (создаётся сам, не коммитьте)
+├── tests/        # юнит-тесты с моком источника цен
+└── requirements.txt
 ```
 
-## Testing
+## Тесты
 
 ```bash
 python -m unittest discover -s tests -v
 python watcher.py --config config.json --once --dry-run
 ```
 
+## Стек
+
+Python + requests; тесты — unittest.
+
 ---
 
-## price-watch на русском
+## EN
 
-Мониторинг цен с уведомлениями в Telegram: Wildberries по артикулу и любые сайты
-по URL + CSS-селектору. Сообщение приходит при любом изменении цены, а падение
-больше `alert_drop_percent` помечается как «Цена упала!».
-
-**Установка и настройка**
-
-1. `pip install -r requirements.txt`
-2. Создайте бота у [@BotFather](https://t.me/BotFather) (`/newbot`), скопируйте токен.
-3. Узнайте свой `chat_id`: напишите боту любое сообщение, затем откройте
-   `https://api.telegram.org/bot<ТОКЕН>/getUpdates`.
-4. Заполните `config.json` (токен можно держать в переменной окружения `TG_BOT_TOKEN`).
-
-**Команды**
-
-```bash
-python watcher.py --once              # одна проверка
-python watcher.py --daemon            # цикл с интервалом check_interval_minutes
-python watcher.py --once --dry-run    # без отправки в Telegram, только печать
-python watcher.py --status            # сохранённые цены из state.json
-python watcher.py --add-wb 155713071 --name "Мышка беспроводная"
-python watcher.py --add-url https://shop.example.com/p/42 --selector "span.price" --name "Товар"
-python watcher.py --remove 155713071  # по артикулу или URL
-```
-
-**Автозапуск**
-
-Windows: `schtasks /Create /TN "PriceWatch" /TR "python C:\путь\к\price-watch\watcher.py --once" /SC MINUTE /MO 30`
-
-cron: `*/30 * * * * cd /путь/к/price-watch && python3 watcher.py --once >> logs/cron.out 2>&1`
-
-Логи пишутся в `logs/watch.log` и в консоль; сетевые ошибки повторяются с паузой,
-одна плохая позиция (битый конфиг, умерший селектор, нет сети) пишется в лог и
-пропускается — проверка целиком не падает. Коды выхода: `0` — успех, `1` —
-ошибка конфига (нечитаемый config/state.json, нечисловой
-`check_interval_minutes`, нет цели в `--remove`), `2` — ошибка запуска
-(не выбран режим, `--add-wb` вместе с `--add-url`, смешивание `--add-*` /
-`--remove` с `--once` / `--daemon` / `--status`). Тесты:
-`python -m unittest discover -s tests -v`.
+Price monitoring with Telegram alerts: watch products on Wildberries (by SKU) and on any website (URL + CSS selector); get a message when a price drops past your threshold or changes. Pure Python + requests — no browser, no Selenium. One-shot check, daemon mode, dry-run, add/remove from the CLI; details in the Russian section above.
