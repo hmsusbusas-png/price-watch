@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import html
 import logging
+import math
 import sys
 import time
 from datetime import datetime
@@ -42,7 +43,7 @@ def print_status(cfg: dict, state: dict) -> None:
     items = cfg.get("items") or []
     print(f"Позиций в конфиге: {len(items)}; записей в state: {len(entries)}")
     print(f"Интервал проверки: {cfg.get('check_interval_minutes')} мин; "
-          f"порог падения: {cfg.get('alert_drop_percent')}%")
+          f"порог падения: {cfg.get('alert_drop_percent', 5)}%")
     print(f"Telegram: {'настроен' if creds else 'НЕ настроен (TG_BOT_TOKEN или config.json)'}")
     if not items:
         print("Список пуст — добавьте позиции: --add-wb SKU --name \"...\" "
@@ -50,7 +51,11 @@ def print_status(cfg: dict, state: dict) -> None:
         return
     print()
     for item in items:
-        key = pwconfig.item_key(item)
+        try:
+            key = pwconfig.item_key(item)
+        except pwconfig.ConfigError as exc:
+            print(f"  [ошибка конфига] {exc}")
+            continue
         entry = entries.get(key) or {}
         name = (item.get("name") or key)[:38]
         price = f"{fmt_price(entry['price'])} ₽" if "price" in entry else "—"
@@ -95,8 +100,23 @@ def deliver(notices: list[str], creds: tuple[str, str] | None, dry_run: bool) ->
             log.error("%s", exc)
 
 
+def drop_threshold(cfg: dict) -> float:
+    """Порог падения цены: число от нуля и выше."""
+    raw = cfg.get("alert_drop_percent", 5)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise pwconfig.ConfigError(
+            f"alert_drop_percent должно быть числом, получено: {raw!r}") from None
+    if not math.isfinite(value) or value < 0:
+        raise pwconfig.ConfigError(
+            f"alert_drop_percent должно быть неотрицательным числом, получено: {raw!r}")
+    return value
+
+
 def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
     """Опросить все позиции, обновить state и вернуть тексты уведомлений."""
+    threshold = drop_threshold(cfg)
     items = cfg.get("items") or []
     if not items:
         log.warning("Список отслеживания пуст — добавьте позиции через --add-wb / --add-url")
@@ -104,8 +124,10 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
     entries = state.setdefault("items", {})
     notices: list[str] = []
     for index, item in enumerate(items):
-        label = str(item.get("name") or item.get("sku") or item.get("url") or "позиция ?")
+        label = str(item.get("name") or item.get("sku") or item.get("url") or "позиция ?") if isinstance(item, dict) else "позиция с неверным форматом"
         try:
+            if not isinstance(item, dict):
+                raise pwconfig.ConfigError("позиция должна быть JSON-объектом")
             key = pwconfig.item_key(item)
             name = item.get("name") or key
             price = sources.fetch_price(item, timeout=timeout)
@@ -122,8 +144,7 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
             log.info("%s: без изменений (%s ₽)", name, fmt_price(price))
         else:
             log.info("%s: цена изменилась: %s → %s ₽", name, fmt_price(prev), fmt_price(price))
-            notices.append(build_message(item, prev, price,
-                                         float(cfg.get("alert_drop_percent") or 0)))
+            notices.append(build_message(item, prev, price, threshold))
         if index < len(items) - 1:
             time.sleep(REQUEST_PAUSE)
     return notices
@@ -208,6 +229,10 @@ def main() -> None:
             interval = interval_minutes(cfg)
         except pwconfig.ConfigError as e:
             sys.exit(f"Ошибка конфига: {e}")
+        try:
+            drop_threshold(cfg)
+        except pwconfig.ConfigError as e:
+            sys.exit(f"Ошибка конфига: {e}")
         setup_logging(cfg_path.parent)
         creds = pwconfig.telegram_creds(cfg)
         if creds is None and not args.dry_run:
@@ -215,9 +240,16 @@ def main() -> None:
                         "или задайте переменную TG_BOT_TOKEN")
         while True:
             state_path = pwconfig.state_path(cfg_path)
-            state = pwconfig.load_state(state_path)
-            notices = check_once(cfg, state)
-            pwconfig.save_state(state_path, state)
+            try:
+                state = pwconfig.load_state(state_path)
+                notices = check_once(cfg, state)
+                pwconfig.save_state(state_path, state)
+            except pwconfig.ConfigError as exc:
+                log.error("Ошибка состояния: %s", exc)
+                if not args.daemon:
+                    sys.exit(1)
+                time.sleep(interval * 60)
+                continue
             deliver(notices, creds, args.dry_run)
             if not args.daemon:
                 break
