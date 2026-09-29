@@ -19,14 +19,13 @@ def send(token: str, chat_id: str, text: str, timeout: float = 10.0) -> None:
             timeout=timeout)
     except requests.RequestException as e:
         raise TelegramError(f"нет связи с Telegram ({e.__class__.__name__})") from e
-    # ответ может быть не-JSON (прокси, HTML-заглушка) — не падаем на .json()
     try:
         payload = resp.json()
     except ValueError:
         payload = None
     if isinstance(payload, dict):
         if payload.get("ok"):
-            return  # HTTP 200 + ok:true — сообщение принято
+            return
         detail = str(payload.get("description") or payload)[:200]
     else:
         detail = (resp.text or "").strip()[:120] or "ответ не в JSON"

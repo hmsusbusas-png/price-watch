@@ -1,7 +1,4 @@
-"""Тесты: селекторы, разбор цен, логика алертов и прогон проверки с подменой источника.
-
-Запуск: python -m unittest discover -s tests -v
-"""
+"""Тесты: селекторы, разбор цен, алерты и прогон проверки с подменой источника."""
 from __future__ import annotations
 
 import sys
@@ -38,12 +35,12 @@ class SelectorTests(unittest.TestCase):
 
 class AlertTests(unittest.TestCase):
     def test_drop_over_threshold(self):
-        msg = watcher.build_message({"name": "Keyboard"}, 100.0, 90.0, 5)
+        msg = watcher.alert_text({"name": "Keyboard"}, 100.0, 90.0, 5)
         self.assertIn("Цена упала!", msg)
         self.assertIn("-10.0%", msg)
 
     def test_small_change_is_not_alert(self):
-        msg = watcher.build_message({"name": "Keyboard"}, 100.0, 98.0, 5)
+        msg = watcher.alert_text({"name": "Keyboard"}, 100.0, 98.0, 5)
         self.assertNotIn("Цена упала!", msg)
         self.assertIn("Изменение цены", msg)
 
@@ -63,9 +60,9 @@ class CheckTests(unittest.TestCase):
         sources.fetch_price = fake_fetch
         try:
             state = {"items": {}}
-            self.assertEqual(watcher.check_once(cfg, state), [])  # базовая цена
-            self.assertEqual(watcher.check_once(cfg, state), [])  # без изменений
-            notices = watcher.check_once(cfg, state)              # падение на 8%
+            self.assertEqual(watcher.run_check(cfg, state), [])
+            self.assertEqual(watcher.run_check(cfg, state), [])
+            notices = watcher.run_check(cfg, state)
         finally:
             sources.fetch_price = original
         self.assertEqual(state["items"]["wb:1"]["price"], 92.0)
@@ -74,7 +71,7 @@ class CheckTests(unittest.TestCase):
 
     def test_config_roundtrip(self):
         cfg_path = Path(tempfile.mkdtemp()) / "config.json"
-        cfg = pwconfig.load_config(cfg_path)  # автосоздание с дефолтами
+        cfg = pwconfig.load_config(cfg_path)
         self.assertEqual(cfg["check_interval_minutes"], 30)
         self.assertTrue(pwconfig.add_item(cfg, {"type": "wb", "sku": "42", "name": "X"}))
         self.assertFalse(pwconfig.add_item(cfg, {"type": "wb", "sku": "42", "name": "dup"}))

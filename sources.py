@@ -84,7 +84,6 @@ def page_price(url: str, selector: str, timeout: float = 10.0, retries: int = 3)
 
 def _fetch_html(url: str, timeout: float, retries: int) -> str:
     if url.startswith("file://"):
-        # локальные страницы — удобно для тестов и отладки селекторов
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace")
     last: Exception | None = None
@@ -182,8 +181,7 @@ def _matches(node: _Node, part: tuple) -> bool:
 
 
 def select_text(html_text: str, selector: str) -> str | None:
-    """Первый блок, подходящий под селектор: последний элемент цепочки — сам блок,
-    предыдущие — его предки (как в CSS)."""
+    """Первый блок под селектором: последний элемент цепочки — сам блок, остальные — предки."""
     parts = [_compile_part(p) for p in selector.split()]
     builder = _TreeBuilder()
     builder.feed(html_text)

@@ -16,11 +16,10 @@ import telegram as tg
 
 log = logging.getLogger("price-watch")
 
-REQUEST_PAUSE = 1.5  # пауза между запросами, чтобы не дёргать сайты подряд
+PAUSE = 1.5
 
 
-def setup_logging(base_dir: Path) -> None:
-    """Логи одновременно в консоль и в logs/watch.log рядом с config.json."""
+def init_log(base_dir: Path) -> None:
     log_dir = base_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%Y-%m-%d %H:%M:%S")
@@ -63,8 +62,7 @@ def print_status(cfg: dict, state: dict) -> None:
         print(f"  {name:<38} {price:>14}  {checked}")
 
 
-def build_message(item: dict, prev: float, current: float, drop_threshold: float) -> str:
-    """Сообщение о смене цены; падение сильнее порога помечается как алерт."""
+def alert_text(item: dict, prev: float, current: float, drop_threshold: float) -> str:
     diff = current - prev
     pct = diff / prev * 100 if prev else 0.0
     name = html.escape(item.get("name") or pwconfig.item_key(item))
@@ -100,8 +98,7 @@ def deliver(notices: list[str], creds: tuple[str, str] | None, dry_run: bool) ->
             log.error("%s", exc)
 
 
-def drop_threshold(cfg: dict) -> float:
-    """Порог падения цены: число от нуля и выше."""
+def get_threshold(cfg: dict) -> float:
     raw = cfg.get("alert_drop_percent", 5)
     try:
         value = float(raw)
@@ -114,9 +111,8 @@ def drop_threshold(cfg: dict) -> float:
     return value
 
 
-def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
-    """Опросить все позиции, обновить state и вернуть тексты уведомлений."""
-    threshold = drop_threshold(cfg)
+def run_check(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
+    threshold = get_threshold(cfg)
     items = cfg.get("items") or []
     if not items:
         log.warning("Список отслеживания пуст — добавьте позиции через --add-wb / --add-url")
@@ -132,7 +128,6 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
             name = item.get("name") or key
             price = sources.fetch_price(item, timeout=timeout)
         except (sources.SourceError, pwconfig.ConfigError) as exc:
-            # одна плохая позиция (битый конфиг, сеть, селектор) не роняет весь цикл
             log.error("%s: %s", label, exc)
             continue
         prev = (entries.get(key) or {}).get("price")
@@ -144,9 +139,9 @@ def check_once(cfg: dict, state: dict, *, timeout: float = 10.0) -> list[str]:
             log.info("%s: без изменений (%s ₽)", name, fmt_price(price))
         else:
             log.info("%s: цена изменилась: %s → %s ₽", name, fmt_price(prev), fmt_price(price))
-            notices.append(build_message(item, prev, price, threshold))
+            notices.append(alert_text(item, prev, price, threshold))
         if index < len(items) - 1:
-            time.sleep(REQUEST_PAUSE)
+            time.sleep(PAUSE)
     return notices
 
 
@@ -173,8 +168,7 @@ def cmd_remove(cfg: dict, cfg_path: Path, target: str) -> None:
         sys.exit(f"Не найдено в списке: {target}")
 
 
-def interval_minutes(cfg: dict) -> int:
-    """check_interval_minutes из конфига; мусор в значении — понятная ConfigError."""
+def get_interval(cfg: dict) -> int:
     raw = cfg.get("check_interval_minutes")
     if raw is None or raw == "":
         return 30
@@ -226,14 +220,14 @@ def main() -> None:
 
     if args.once or args.daemon:
         try:
-            interval = interval_minutes(cfg)
+            interval = get_interval(cfg)
         except pwconfig.ConfigError as e:
             sys.exit(f"Ошибка конфига: {e}")
         try:
-            drop_threshold(cfg)
+            get_threshold(cfg)
         except pwconfig.ConfigError as e:
             sys.exit(f"Ошибка конфига: {e}")
-        setup_logging(cfg_path.parent)
+        init_log(cfg_path.parent)
         creds = pwconfig.telegram_creds(cfg)
         if creds is None and not args.dry_run:
             log.warning("Telegram не настроен: заполните telegram в config.json "
@@ -242,7 +236,7 @@ def main() -> None:
             state_path = pwconfig.state_path(cfg_path)
             try:
                 state = pwconfig.load_state(state_path)
-                notices = check_once(cfg, state)
+                notices = run_check(cfg, state)
                 pwconfig.save_state(state_path, state)
             except pwconfig.ConfigError as exc:
                 log.error("Ошибка состояния: %s", exc)
