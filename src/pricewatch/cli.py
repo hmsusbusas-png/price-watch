@@ -55,6 +55,9 @@ def cmd_remove(store: Store, cfg: settings.Settings, args: argparse.Namespace) -
 
 
 def run_check(store: Store, cfg: settings.Settings, dry_run: bool) -> int:
+    if not store.items():
+        print("Список пуст, проверять нечего. Добавьте товар: pricewatch add wb 123456")
+        return 0
     result = check(store)
     for change in result.changes:
         before = "—" if change.before is None else f"{money(change.before)} ₽"
