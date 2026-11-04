@@ -1,0 +1,25 @@
+{
+  "data": {
+    "products": [
+      {
+        "id": 155713071,
+        "name": "Капучинатор ручной на батарейках",
+        "brand": " Kitchen Lab ",
+        "reviewRating": 4.7,
+        "feedbacks": 1832,
+        "sizes": [
+          {"name": "", "price": {"basic": 129900, "product": 54900, "total": 54900}}
+        ]
+      },
+      {
+        "id": 42,
+        "name": "Старый формат ответа",
+        "salePriceU": 99000,
+        "priceU": 150000,
+        "rating": 4,
+        "feedbacks": 3
+      },
+      {"name": "без id"}
+    ]
+  }
+}
