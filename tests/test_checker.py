@@ -88,7 +88,7 @@ def test_settings_defaults(tmp_path):
 
 def test_settings_from_env_file(tmp_path):
     env = tmp_path / ".env"
-    env.write_text('# comment\nTELEGRAM_BOT_TOKEN="123456789:AAH-abcdefghijklmnopqrstuvwxyz012345"\n'
+    env.write_text('# comment\nTELEGRAM_BOT_TOKEN="123456789:test-token-for-unit-tests-only-xxxx"\n'
                    "TELEGRAM_CHAT_ID=-100123\nCHECK_INTERVAL_MINUTES=15\n", encoding="utf-8")
     cfg = settings.load(env, environ={})
     assert cfg.telegram and cfg.interval_minutes == 15 and cfg.telegram_chat == "-100123"
@@ -96,7 +96,7 @@ def test_settings_from_env_file(tmp_path):
 
 @pytest.mark.parametrize(("env", "message"), [
     ({"TELEGRAM_BOT_TOKEN": "12345"}, "не похож на токен"),
-    ({"TELEGRAM_BOT_TOKEN": "123456789:AAH-abcdefghijklmnopqrstuvwxyz012345"}, "оба значения"),
+    ({"TELEGRAM_BOT_TOKEN": "123456789:test-token-for-unit-tests-only-xxxx"}, "оба значения"),
     ({"CHECK_INTERVAL_MINUTES": "0"}, "не меньше 1"),
     ({"ALERT_DROP_PERCENT": "пять"}, "числом"),
 ])
