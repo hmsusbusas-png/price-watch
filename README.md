@@ -1,115 +1,98 @@
-# price-watch
+# pricewatch
 
-Мониторинг цен с уведомлениями в Telegram: следит за товарами на Wildberries (по артикулу) и на любых сайтах (по URL + CSS-селектору), присылает сообщение, когда цена упала ниже порога или просто изменилась. Чистый Python + requests — без браузера и Selenium.
+Price tracker for Wildberries and any shop page: SQLite history, charts, Excel export and Telegram alerts.
 
-```
-🔻 Цена упала!
-Mechanical Keyboard K87
-3 199,00 → 2 499,90 ₽ (-21.9%)
+Следит за ценами на Wildberries по артикулу и на любой странице магазина по CSS-селектору. Хранит историю в SQLite, строит графики, выгружает всё в Excel и пишет в Telegram, когда цена падает больше чем на заданный процент. Работает разовым запуском или как сервис в Docker.
+
+[![tests](https://github.com/hmsusbusas-png/price-watch/actions/workflows/tests.yml/badge.svg)](https://github.com/hmsusbusas-png/price-watch/actions/workflows/tests.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+
+![График цены](docs/chart.png)
+
+```text
+$ pricewatch add url https://shop.example.com/k87 --selector "div#product span.price"
+Добавлен №1: Механическая клавиатура K87, сейчас 2 599 ₽
+
+$ pricewatch check
+Механическая клавиатура K87                          2 599 ₽ → 2 499,90 ₽
+
+$ pricewatch export --out prices.xlsx
+Excel: C:\prices\prices.xlsx
 ```
 
 ## Возможности
 
-- два типа источников: карточка Wildberries по артикулу (`type: "wb"`) и любая HTML-страница через встроенный селектор-движок (`type: "url"`; поддерживаются `tag`, `#id`, `.class`, `[attr=value]` и цепочки вложенности — BeautifulSoup не нужен)
-- уведомление в Telegram при любом изменении цены; падение на `alert_drop_percent` и сильнее помечается как «Цена упала!»
-- последние цены хранятся в `state.json`, перезапуски безопасны
-- CLI: разовая проверка, режим демона, dry-run, добавление и удаление позиций прямо из командной строки
-- вежливый по умолчанию: повторы с паузой при сетевых ошибках, задержка между запросами, логи в `logs/watch.log` и консоль
-- одна сломанная позиция (битый конфиг, умерший селектор, нет сети) пишется в лог и пропускается — проверка целиком не падает
-- осмысленные коды выхода: `0` — успех, `1` — ошибка конфига, `2` — ошибка запуска; удобно вешать на cron
+- Источники: Wildberries (публичный API карточек и поиска) и любая страница с ценой в HTML. Селекторы: `tag`, `#id`, `.class`, `[attr=value]` и их цепочки через пробел.
+- Цены вида `2 499,90 ₽`, `$1,234.56`, `от 3 200 руб.` разбираются в число.
+- История в SQLite: новая запись появляется только когда цена изменилась.
+- Уведомление в Telegram при падении цены на `ALERT_DROP_PERCENT` процентов и больше, со ссылкой на товар.
+- `export` — Excel со сводкой и отдельным листом на каждый товар с графиком Excel. `chart` — PNG.
+- `search` — поиск по Wildberries с выгрузкой выдачи в Excel.
+- Сетевые ошибки и 5xx повторяются до трёх раз, один сломанный товар не останавливает проверку остальных.
 
-## Быстрый старт
+## Как запустить
 
-1. Склонируйте репозиторий и установите зависимости:
+Нужен Python 3.11+ и [uv](https://docs.astral.sh/uv/).
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Создайте бота у [@BotFather](https://t.me/BotFather) (`/newbot`) и скопируйте токен. Напишите своему боту любое сообщение и получите `chat_id` через `https://api.telegram.org/bot<ТОКЕН>/getUpdates` (поле `"chat":{"id": ...}`).
-3. Заполните `config.json`:
-
-   ```json
-   {
-     "items": [
-       { "type": "wb",  "sku": "155713071", "name": "Wildberries item" },
-       { "type": "url", "url": "https://shop.example.com/product/42",
-         "selector": "span.product-price", "name": "Shop item" }
-     ],
-     "check_interval_minutes": 30,
-     "alert_drop_percent": 5,
-     "telegram": { "bot_token": "123456:ABC...", "chat_id": "11111111" }
-   }
-   ```
-
-   Токен можно не класть в конфиг, а держать в переменной окружения `TG_BOT_TOKEN`.
-
-4. Проверьте, что всё читается: `python watcher.py --once --dry-run` — без отправки в Telegram, только печать.
-
-## Команды
-
-```bash
-python watcher.py --once                  # одна проверка всех позиций
-python watcher.py --daemon                # цикл каждые check_interval_minutes
-python watcher.py --daemon --dry-run      # цикл без отправки в Telegram
-python watcher.py --status                # сохранённые цены из state.json
-
-python watcher.py --add-wb 155713071 --name "Мышка беспроводная"
-python watcher.py --add-url https://shop.example.com/p/42 --selector "span.price" --name "Товар"
-python watcher.py --remove 155713071      # по артикулу или по URL
+```sh
+git clone https://github.com/hmsusbusas-png/price-watch
+cd price-watch
+uv sync
+cp .env.example .env        # в PowerShell: copy .env.example .env
+uv run pricewatch add wb 155713071
+uv run pricewatch check --dry-run
 ```
 
-Сетевые ошибки повторяются (3 попытки с паузой) и логируются. Коды выхода: `0` — успех, `1` — ошибка конфига (нечитаемый `config.json`/`state.json`, нечисловой `check_interval_minutes`, нет цели для `--remove`), `2` — ошибка запуска (не выбран режим, `--add-wb` вместе с `--add-url`, смешивание `--add-*`/`--remove` с `--once`/`--daemon`/`--status`).
+Команды:
 
-## По расписанию
+| Команда | Что делает |
+|---|---|
+| `add wb <артикул>` / `add url <адрес> --selector <css>` | начать следить, сразу записывает текущую цену |
+| `list`, `remove <№>` | список и удаление |
+| `check [--dry-run]` | одна проверка; с `--dry-run` сообщения печатаются, а не отправляются |
+| `watch` | проверять по кругу раз в `CHECK_INTERVAL_MINUTES` |
+| `history <№>`, `chart <№>` | история в консоли и график в PNG |
+| `export --out prices.xlsx` | вся история в Excel |
+| `search "<запрос>" --excel out.xlsx` | поиск по Wildberries |
 
-Windows (планировщик задач):
+Настройки в `.env` (пример в `.env.example`): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CHECK_INTERVAL_MINUTES`, `ALERT_DROP_PERCENT`, `PRICEWATCH_DB`. Неверные значения проверяются при старте: программа скажет, что не так, и не запустится.
 
-```bat
-schtasks /Create /TN "PriceWatch" /TR "python C:\path\to\price-watch\watcher.py --once" /SC MINUTE /MO 30
+### Как сервис в Docker
+
+```sh
+docker build -t pricewatch .
+docker volume create pricewatch-data
+docker run --rm -v pricewatch-data:/data --env-file .env pricewatch add wb 155713071
+docker run -d --name pricewatch --restart unless-stopped -v pricewatch-data:/data --env-file .env pricewatch
 ```
 
-Linux / macOS (cron):
+Последняя команда запускает `watch`, база лежит в томе `pricewatch-data`.
 
-```cron
-*/30 * * * * cd /path/to/price-watch && /usr/bin/python3 watcher.py --once >> logs/cron.out 2>&1
-```
-
-`--daemon` держит процесс запущенным сам; вариант с `--once` по расписанию надёжнее — упавший запуск просто перезапустит планировщик.
-
-## Честно об ограничениях
-
-- WB с некоторых IP отдаёт 403: если карточки не тянутся, попробуйте позже или с другого адреса.
-- url-источник — простой селектор-движок (`tag`, `#id`, `.class`, `[attr=value]`, вложенность): страницы, где цена рисуется JavaScript'ом или спрятана в теневом DOM, он не разберёт.
-- проблемы доставки в Telegram логируются и не роняют проверку.
-
-## Структура
+## Как устроено
 
 ```
-price-watch/
-├── watcher.py    # CLI, цикл проверок, логика уведомлений
-├── sources.py    # API Wildberries + источник HTML-страниц (селектор-движок)
-├── telegram.py   # клиент Telegram Bot API
-├── pwconfig.py   # работа с config.json / state.json
-├── config.json   # отслеживаемые позиции и настройки (редактируйте его)
-├── state.json    # последние цены (создаётся сам, не коммитьте)
-├── tests/        # юнит-тесты с моком источника цен
-└── requirements.txt
+src/pricewatch/
+  sources/        источники цен: base.py (запросы с повторами), wildberries.py, page.py (HTML и селекторы)
+  storage.py      SQLite: товары и история
+  checker.py      проверка и решение, о чём уведомлять
+  report.py       Excel и графики
+  telegram.py     отправка сообщений
+  settings.py     .env и проверка значений
+  cli.py          команды
 ```
 
-## Тесты
+Новый магазин — это класс с полем `kind` и методом `quote(target, selector)`, который возвращает `Quote(price, title)`. Его нужно добавить в `SOURCES` в `sources/__init__.py`.
 
-```bash
-python -m unittest discover -s tests -v
-python watcher.py --config config.json --once --dry-run
-```
+Проверки: `uv run pytest` (44 теста, сеть не нужна: HTTP подменяется), `uv run ruff check .`, `uv run mypy`. То же гоняет CI.
 
-## Стек
+## Ограничения
 
-Python + requests; тесты — unittest.
+- Wildberries отвечает 403 на запросы с зарубежных IP. С российского адреса без VPN всё работает.
+- Страницы, где цена появляется только после JavaScript, не прочитать: нужен браузер, а здесь обычный HTTP.
+- Формат API Wildberries меняется без предупреждения. Разбор поддерживает и текущий (`sizes[].price`), и старый (`salePriceU`).
 
----
+Раньше поиск, Excel и графики жили в отдельном репозитории wb-price-tracker, теперь всё здесь.
 
-## EN
+## Лицензия
 
-Price monitoring with Telegram alerts: watch products on Wildberries (by SKU) and on any website (URL + CSS selector); get a message when a price drops past your threshold or changes. Pure Python + requests — no browser, no Selenium. One-shot check, daemon mode, dry-run, add/remove from the CLI; details in the Russian section above.
+MIT, см. [LICENSE](LICENSE).

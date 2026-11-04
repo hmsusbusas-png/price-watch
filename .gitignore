@@ -1,7 +1,10 @@
 __pycache__/
-venv/
-state.json
-logs/
+.venv/
 .env
-config.*.json
+data/
+*.xlsx
+chart-*.png
 *.log
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
