@@ -97,7 +97,7 @@ class Wildberries:
 
     def quote(self, target: str, selector: str | None = None) -> Quote:
         if not target.isdigit():
-            raise SourceError(f"артикул Wildberries — это число, а не {target!r}")
+            raise SourceError(f"артикул Wildberries должен быть числом: {target!r}")
         found = self.products([int(target)])
         if not found:
             raise SourceError(f"товар {target} не найден, проверьте артикул")

@@ -10,7 +10,7 @@ Price tracker for Wildberries and any shop page: SQLite history, charts, Excel e
 ![График цены](docs/chart.png)
 
 ```text
-$ pricewatch add url https://shop.example.com/k87 --selector "div#product span.price"
+$ pricewatch add url https://example.com/k87 --selector "div#product span.price"
 Добавлен №1: Механическая клавиатура K87, сейчас 2 599 ₽
 
 $ pricewatch check
@@ -26,8 +26,8 @@ Excel: C:\prices\prices.xlsx
 - Цены вида `2 499,90 ₽`, `$1,234.56`, `от 3 200 руб.` разбираются в число.
 - История в SQLite: новая запись появляется только когда цена изменилась.
 - Уведомление в Telegram при падении цены на `ALERT_DROP_PERCENT` процентов и больше, со ссылкой на товар.
-- `export` — Excel со сводкой и отдельным листом на каждый товар с графиком Excel. `chart` — PNG.
-- `search` — поиск по Wildberries с выгрузкой выдачи в Excel.
+- `export` создаёт Excel со сводкой и отдельным листом на каждый товар с графиком Excel. `chart` сохраняет PNG.
+- `search` выполняет поиск по Wildberries с выгрузкой выдачи в Excel.
 - Сетевые ошибки и 5xx повторяются до трёх раз, один сломанный товар не останавливает проверку остальных.
 
 ## Как запустить
@@ -81,13 +81,13 @@ src/pricewatch/
   cli.py          команды
 ```
 
-Новый магазин — это класс с полем `kind` и методом `quote(target, selector)`, который возвращает `Quote(price, title)`. Его нужно добавить в `SOURCES` в `sources/__init__.py`.
+Для нового магазина нужен класс с полем `kind` и методом `quote(target, selector)`, который возвращает `Quote(price, title)`. Его нужно добавить в `SOURCES` в `sources/__init__.py`.
 
 Проверки: `uv run pytest` (44 теста, сеть не нужна: HTTP подменяется), `uv run ruff check .`, `uv run mypy`. То же гоняет CI.
 
 ## Ограничения
 
-- Wildberries отвечает 403 на запросы с зарубежных IP. С российского адреса без VPN всё работает.
+- Wildberries отвечает 403 на запросы с зарубежных IP. Доступ с российского IP нужно проверить отдельно.
 - Страницы, где цена появляется только после JavaScript, не прочитать: нужен браузер, а здесь обычный HTTP.
 - Формат API Wildberries меняется без предупреждения. Разбор поддерживает и текущий (`sizes[].price`), и старый (`salePriceU`).
 

@@ -41,7 +41,7 @@ def cmd_list(store: Store, cfg: settings.Settings, args: argparse.Namespace) -> 
         return 0
     for item in items:
         last = store.last_price(item.id)
-        price = f"{money(last)} ₽" if last is not None else "—"
+        price = f"{money(last)} ₽" if last is not None else "нет данных"
         print(f"{item.id:>3}  {item.kind:<3}  {item.name[:48]:<48}  {price:>12}")
     return 0
 
@@ -60,7 +60,7 @@ def run_check(store: Store, cfg: settings.Settings, dry_run: bool) -> int:
         return 0
     result = check(store)
     for change in result.changes:
-        before = "—" if change.before is None else f"{money(change.before)} ₽"
+        before = "нет данных" if change.before is None else f"{money(change.before)} ₽"
         print(f"{change.item.name[:48]:<48}  {before:>12} → {money(change.after)} ₽")
     for item, error in result.failed:
         print(f"{item.name[:48]:<48}  ошибка: {error}", file=sys.stderr)
@@ -144,7 +144,7 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     add = sub.add_parser("add", help="начать следить за товаром")
-    add.add_argument("kind", choices=["wb", "url"], help="wb — артикул Wildberries, url — страница магазина")
+    add.add_argument("kind", choices=["wb", "url"], help="wb: артикул Wildberries; url: страница магазина")
     add.add_argument("target", help="артикул или адрес страницы")
     add.add_argument("--selector", help="CSS-селектор блока с ценой, для url")
     add.add_argument("--name", help="своё название вместо заголовка страницы")

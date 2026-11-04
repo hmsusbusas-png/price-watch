@@ -52,7 +52,7 @@ def check(store: Store, items: list[Item] | None = None,
             continue
         store.record(item.id, quote.price)
         result.changes.append(Change(item, before, quote.price))
-        log.info("%s: %s → %s ₽", item.name, "—" if before is None else money(before), money(quote.price))
+        log.info("%s: %s → %s ₽", item.name, "нет данных" if before is None else money(before), money(quote.price))
     return result
 
 

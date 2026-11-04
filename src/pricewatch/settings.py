@@ -61,7 +61,7 @@ def load(env_file: Path | str = ".env", environ: dict[str, str] | None = None) -
         raise SettingsError(
             "TELEGRAM_BOT_TOKEN не похож на токен бота: ожидается вид 123456789:AA..., его выдаёт @BotFather")
     if chat and not CHAT.match(chat):
-        raise SettingsError("TELEGRAM_CHAT_ID — это число (id чата) или @имя канала")
+        raise SettingsError("Укажите в TELEGRAM_CHAT_ID число (id чата) или @имя канала")
     if bool(token) != bool(chat):
         raise SettingsError("для уведомлений нужны оба значения: TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID")
 

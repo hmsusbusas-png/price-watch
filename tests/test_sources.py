@@ -48,7 +48,7 @@ def test_bad_selector_is_explained():
 def test_page_quote_from_file():
     quote = Page().quote((FIXTURES / "shop.html").resolve().as_uri(), "span.product-price")
     assert quote.price == 2499.9
-    assert quote.title == "Test Shop — Mechanical Keyboard K87"
+    assert quote.title == "Test Shop: Mechanical Keyboard K87"
 
 
 def test_page_needs_selector():
