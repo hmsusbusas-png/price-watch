@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from pricewatch import report, settings, telegram
+from pricewatch import cli, report, settings, telegram
 from pricewatch.checker import Change, alerts, check, money
 from pricewatch.sources import Quote, SourceError
 
@@ -23,6 +23,13 @@ class ScriptedSource:
         if isinstance(value, Exception):
             raise value
         return Quote(price=value)
+
+
+def test_watch_requires_a_product(tmp_path, capsys):
+    config = tmp_path / "empty.env"
+    config.write_text(f"PRICEWATCH_DB={tmp_path / 'prices.db'}\n", encoding="utf-8")
+    assert cli.main(["--env", str(config), "watch"]) == 2
+    assert "Сначала добавьте товар" in capsys.readouterr().err
 
 
 def test_first_check_records_price_without_alert(store):

@@ -83,7 +83,7 @@ src/pricewatch/
 
 Для нового магазина нужен класс с полем `kind` и методом `quote(target, selector)`, который возвращает `Quote(price, title)`. Его нужно добавить в `SOURCES` в `sources/__init__.py`.
 
-Проверки: `uv run pytest` (44 теста, сеть не нужна: HTTP подменяется), `uv run ruff check .`, `uv run mypy`. То же гоняет CI.
+Проверки: `uv run pytest` (45 тестов, сеть не нужна: HTTP подменяется), `uv run ruff check .`, `uv run mypy`. То же гоняет CI.
 
 ## Ограничения
 

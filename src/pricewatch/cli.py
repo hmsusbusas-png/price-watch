@@ -84,6 +84,9 @@ def cmd_check(store: Store, cfg: settings.Settings, args: argparse.Namespace) ->
 
 
 def cmd_watch(store: Store, cfg: settings.Settings, args: argparse.Namespace) -> int:
+    if not store.items():
+        print("Не за чем следить. Сначала добавьте товар: pricewatch add wb 123456", file=sys.stderr)
+        return 2
     log.info("проверка каждые %d мин, уведомления %s", cfg.interval_minutes,
              "в Telegram" if cfg.telegram else "выключены")
     while True:
