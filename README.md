@@ -4,7 +4,7 @@ Price tracker for Wildberries and any shop page: SQLite history, charts, Excel e
 
 Следит за ценами на Wildberries по артикулу и на любой странице магазина по CSS-селектору. Хранит историю в SQLite, строит графики, выгружает всё в Excel и пишет в Telegram, когда цена падает больше чем на заданный процент. Работает разовым запуском или как сервис в Docker.
 
-[![tests](https://github.com/hmsusbusas-png/price-watch/actions/workflows/tests.yml/badge.svg)](https://github.com/hmsusbusas-png/price-watch/actions/workflows/tests.yml)
+[![tests](https://github.com/zaxdevv/price-watch/actions/workflows/tests.yml/badge.svg)](https://github.com/zaxdevv/price-watch/actions/workflows/tests.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 ![График цены](docs/chart.png)
@@ -35,7 +35,7 @@ Excel: C:\prices\prices.xlsx
 Нужен Python 3.11+ и [uv](https://docs.astral.sh/uv/).
 
 ```sh
-git clone https://github.com/hmsusbusas-png/price-watch
+git clone https://github.com/zaxdevv/price-watch
 cd price-watch
 uv sync
 cp .env.example .env        # в PowerShell: copy .env.example .env
